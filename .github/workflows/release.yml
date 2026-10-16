@@ -1,0 +1,28 @@
+name: Release Windows VST3
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCLANG_FORMAT="C:/Program Files/LLVM/bin/clang-format.exe"
+      - name: Build and package
+        run: cmake --build build --config Release --target package-windows --parallel 4
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: build/dist/*.zip
+          tag_name: v${{ github.event.inputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

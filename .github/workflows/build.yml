@@ -1,0 +1,26 @@
+name: Windows VST3
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCLANG_FORMAT="C:/Program Files/LLVM/bin/clang-format.exe"
+      - name: Check formatting
+        run: cmake --build build --config Release --target format-check
+      - name: Build and package
+        run: cmake --build build --config Release --target package-windows --parallel 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simple_multi_analyzer-windows-x64
+          path: build/dist/*.zip
+          if-no-files-found: error
