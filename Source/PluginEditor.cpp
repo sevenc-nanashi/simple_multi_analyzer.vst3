@@ -132,19 +132,37 @@ void PluginEditor::drawSpectrum(juce::Graphics& g, int index, juce::Rectangle<fl
         return;
     const float binWidth = static_cast<float>(processor.analyzer->getSampleRate()) / Analyzer::fftSize;
     const float logRange = std::log(maximum / 20.0f);
+    std::array<double, Analyzer::binCount + 1> integratedPower{};
+    for (int bin = 0; bin < Analyzer::binCount; ++bin)
+        integratedPower[bin + 1] = integratedPower[bin] + std::pow(10.0, spectra[index][bin] * 0.1);
+    const auto integral = [&](double position)
+    {
+        const int bin = juce::jmin(static_cast<int>(position), Analyzer::binCount - 1);
+        return juce::jmap(position - bin, integratedPower[bin], integratedPower[bin + 1]);
+    };
+    const double bandRatio = std::exp2(1.0 / 24.0);
     juce::Path path;
     const int pixels = static_cast<int>(graph.getWidth());
     for (int x = 0; x <= pixels; ++x)
     {
         const float frequency = 20.0f * std::exp(logRange * static_cast<float>(x) / pixels);
-        const float nextFrequency = 20.0f * std::exp(logRange * static_cast<float>(x + 1) / pixels);
         const float position = frequency / binWidth;
         const int first = juce::jlimit(0, Analyzer::binCount - 2, static_cast<int>(position));
         const float fraction = juce::jlimit(0.0f, 1.0f, position - first);
         float db = juce::jmap(fraction, spectra[index][first], spectra[index][first + 1]);
-        const int end = juce::jmin(Analyzer::binCount - 1, static_cast<int>(nextFrequency / binWidth));
-        for (int bin = first + 1; bin <= end; ++bin)
-            db = juce::jmax(db, spectra[index][bin]);
+        const double lower =
+            juce::jlimit(0.0, static_cast<double>(Analyzer::binCount), position / bandRatio + 0.5);
+        const double upper =
+            juce::jlimit(0.0, static_cast<double>(Analyzer::binCount), position * bandRatio + 0.5);
+        const double width = upper - lower;
+        if (width > 1.0)
+        {
+            // Fractional bin weights avoid steps as the 1/12-octave band moves across bins.
+            const double power = (integral(upper) - integral(lower)) / width;
+            const float smoothedDb = static_cast<float>(10.0 * std::log10(juce::jmax(1.0e-10, power)));
+            db = juce::jmap(static_cast<float>(juce::jmin(1.0, width - 1.0)), db, smoothedDb);
+        }
+        jassert(std::isfinite(db) && db >= -100.01f);
         const float y =
             juce::jmap(juce::jlimit(-100.0f, 6.0f, db), -100.0f, 6.0f, graph.getBottom(), graph.getY());
         if (x == 0)
@@ -165,8 +183,8 @@ void PluginEditor::paint(juce::Graphics& g)
     g.drawText("simple_multi_analyzer.vst3", 24, 18, getWidth() - 48, 30, juce::Justification::centredLeft);
     g.setColour(muted);
     g.setFont(juce::FontOptions(13.0f));
-    g.drawText("STEREO SPECTRUM  /  64 PAIRS  /  AUDIO PASSES THROUGH", 25, 53, getWidth() - 50, 20,
-               juce::Justification::centredLeft);
+    g.drawText("Simple Multi Analyzer / https://github.com/sevenc-nanashi/simple_multi_analyzer.vst3", 25, 53,
+               getWidth() - 50, 20, juce::Justification::centredLeft);
 
     const auto graph = graphBounds();
     g.setColour(panel);
